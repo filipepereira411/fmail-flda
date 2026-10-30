@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fmail</title>
+<link rel="stylesheet" href="https://googleapis.com">
+<script src="https://jsdelivr.net"></script>
+<style>
+:root{--bg:#e9eef2;--card:#fff;--ink:#14263a;--mute:#5d6f80;--line:#cbd5de;--acc:#f2b705;--acc-ink:#14263a;--err:#b3261e;--ok:#1b7a4b;--note:#fff6d6;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1b27;--card:#172a3b;--ink:#e8eef4;--mute:#9bb0c2;--line:#2b4155;--err:#ff8a80;--ok:#6fd7a1;--note:#3a3315;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,sans-serif;line-height:1.5;min-height:100vh}
+main{max-width:460px;margin:0 auto;padding:40px 20px}
+main.wide{max-width:860px}
+h1{font-size:2.2rem;line-height:1.1;margin:0 0 6px;font-weight:800;letter-spacing:-.02em}
+h2{font-size:1.2rem;margin:0 0 12px}
+p.sub{color:var(--mute);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+.note{background:var(--note);border-left:5px solid var(--acc);border-radius:6px;padding:12px 14px;margin:0 0 20px;font-size:.95rem}
+label{display:block;font-weight:600;font-size:.9rem;margin:14px 0 4px}
+input{width:100%;padding:11px 12px;font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:8px}
+input:focus,button:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button{font:inherit;font-weight:600;cursor:pointer;border:0;border-radius:8px;padding:10px 16px;background:var(--acc);color:var(--acc-ink)}
+button:disabled{opacity:.6;cursor:wait}
+button.full{width:100%;margin-top:20px;padding:12px}
+button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.msg{min-height:1.4em;margin-top:12px;font-size:.92rem}
+.msg.err{color:var(--err)}.msg.ok{color:var(--ok)}
+.switch{margin-top:18px;text-align:center;color:var(--mute);font-size:.92rem}
+.switch a{color:var(--ink);font-weight:600;cursor:pointer;text-decoration:underline}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+.table{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:600}
+.tag{font-size:.8rem;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.tag.sent{color:var(--ok);border-color:var(--ok)}
+.empty{color:var(--mute);padding:16px 0}
+.code{letter-spacing:.5em;font-size:1.4rem;text-align:center;font-weight:600}
+.demo{background:var(--note);border:1.5px dashed var(--acc);border-radius:8px;padding:10px 12px;margin-top:14px;font-size:.9rem}
+.link{background:none;border:0;padding:0;color:var(--ink);text-decoration:underline;font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<main id="app"></main>
+
+<script>
+/* ============ CONFIGURAÇÃO ============ */
+var CONFIG={
+  DOMINIO:"@fmail.com",            
+  REMETENTE:"admin@fmail.com",     
+  ADMIN_USER:"admin",
+  ADMIN_PASS:"admin",
+  ADMIN_EMAIL:"",                  
+  URL_DO_SITE:"https://fmail.com",
+
+  /* Configuração EmailJS atualizada com o ID do seu Outlook */
+  EMAILJS_PUBLIC_KEY:"SUA_PUBLIC_KEY_AQUI",  
+  EMAILJS_SERVICE_ID:"service_mo0p8cd",     
+  EMAILJS_TEMPLATE_ID:"SEU_TEMPLATE_ID_AQUI" 
+};
+/* ====================================== */
+
+var mem={};
+function load(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return mem[k]!==undefined?mem[k]:d}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){mem[k]=v}}
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"'"}[c]})}
+function setMsg(t,c){var m=$("msg");if(m){m.textContent=t;m.className="msg "+(c||"")}}
+
+var clients=load("clientes",[]);
+var session=load("sessao",null);
+var pending=null;   
+var autoMail=!!(CONFIG.EMAILJS_PUBLIC_KEY&&CONFIG.EMAILJS_SERVICE_ID&&CONFIG.EMAILJS_TEMPLATE_ID&&window.emailjs);
+if(autoMail){try{emailjs.init({publicKey:CONFIG.EMAILJS_PUBLIC_KEY})}catch(e){autoMail=false}}
+function siteUrl(){return CONFIG.URL_DO_SITE||location.href.split("#")[0]}
+
+function emailError(v){
+  v=v.trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+$/.test(v))return "Escreva um email completo, como nome"+CONFIG.DOMINIO+".";
+  var parts=v.split("@"),local=parts[0];
+  if(v.slice(-CONFIG.DOMINIO.length)!==CONFIG.DOMINIO)return "Só são aceites emails "+CONFIG.DOMINIO+".";
+  if(!/^[a-z0-9._%+-]{1,64}$/.test(local)||/^\.|\.$|\.\./.test(local))return "A parte antes do @ só pode ter letras, números e . _ % + - (sem pontos seguidos ou no início/fim).";
+  return "";
+}
+
+function toHex(buf){return Array.prototype.map.call(new Uint8Array(buf),function(b){return("0"+b.toString(16)).slice(-2)}).join("")}
+async function derive(p,salt){
+  var k=await crypto.subtle.importKey("raw",new TextEncoder().encode(p),"PBKDF2",false,["deriveBits"]);
+  var bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt:new TextEncoder().encode(salt),iterations:100000,hash:"SHA-256"},k,256);
+  return toHex(bits);
+}
+async function hashPass(p){
+  if(!(window.crypto&&crypto.subtle))return "plain:"+p;
+  var salt=toHex(crypto.getRandomValues(new Uint8Array(16)));
+  return "pb:"+salt+":"+await derive(p,salt);
+}
+async function checkPass(c,p){
+  if(c.pass!==undefined)return c.pass===p;                 
+  if(c.hash.indexOf("plain:")===0)return c.hash==="plain:"+p;
+  var s=c.hash.split(":");
+  if(!(window.crypto&&crypto.subtle))return false;
+  return (await derive(p,s[1]))===s[2];
+}
+
+function newCode(){return String(100000+crypto.getRandomValues(new Uint32Array(1))[0]%900000)}
+function sendMail(to,name,subject,text){
+  if(!autoMail)return Promise.resolve("test");
+  return emailjs.send(CONFIG.EMAILJS_SERVICE_ID,CONFIG.EMAILJS_TEMPLATE_ID,{to_email:to,to_name:name,from_email:CONFIG.REMETENTE,subject:subject,message:text}).then(function(){return "sent"});
+}
+var TEXTOS={
+  login:["Código de entrada","o seu código de entrada"],
+  register:["Confirme o seu email","o código para confirmar o seu email"],
+  reset:["Recuperar palavra-passe","o código para criar uma nova palavra-passe"]
+};
+async function issueCode(purpose,email,name,data,realUser){
+  var code=newCode();
+  pending={purpose:purpose,email:email,name:name,data:data||{},code:code,exp:Date.now()+300000,tries:0,test:!autoMail,fake:!realUser};
+  if(realUser){
+    var t=TEXTOS[purpose];
+    await sendMail(email,name,t[0],"Olá "+name+",\n\nEste é "+t[1]+": "+code+"\nÉ válido durante 5 minutos. Se não pediu isto, ignore este email.\n\nFmail");
+  }
+}
+function checkCode(v){
+  if(!pending)return "expired";
+  if(Date.now()>pending.exp)return "expired";
+  if(pending.tries>=5)return "locked";
+  if(v.trim()===pending.code&&!pending.fake)return "ok";
+  pending.tries++;
+  return pending.tries>=5?"locked":"bad";
+}
+var CODE_ERR={bad:"Código incorreto. Verifique o email e tente novamente.",expired:"O código expirou. Peça um novo.",locked:"Demasiadas tentativas. Peça um novo código."};
+function demoBox(){return(pending&&pending.test&&!pending.fake)?'<div class="demo"><strong>Modo de teste:</strong> sem EmailJS configurado não é enviado nenhum email. O código é <strong>'+pending.code+'</strong>.</div>':''}
+
+function render(view){
+  $("app").className="";
+  if(session&&session.role==="admin")return renderAdmin();
+  if(session&&session.role==="client")return renderClient();
+}
+</script>
+</body>
+</html>
